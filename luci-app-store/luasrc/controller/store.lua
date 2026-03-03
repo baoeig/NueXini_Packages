@@ -31,6 +31,7 @@ function index()
     entry({"admin", "store", "do_self_upgrade"}, post("do_self_upgrade"))
     entry({"admin", "store", "toggle_docker"}, post("toggle_docker"))
     entry({"admin", "store", "toggle_arch"}, post("toggle_arch"))
+    entry({"admin", "store", "toggle_ipv4"}, post("toggle_ipv4"))
     entry({"admin", "store", "get_block_devices"}, call("get_block_devices"))
 
     entry({"admin", "store", "configured"}, call("configured"))
@@ -93,6 +94,7 @@ local function user_config()
     local data = {
         hide_docker = uci:get("istore", "istore", "hide_docker") == "1",
         ignore_arch = uci:get("istore", "istore", "ignore_arch") == "1",
+        ipv4 = uci:get("istore", "istore", "ipv4") == "1",
         last_path = uci:get("istore", "istore", "last_path"),
         super_arch = uci:get("istore", "istore", "super_arch"),
         channel = uci:get("istore", "istore", "channel")
@@ -264,6 +266,7 @@ local function get_installed_and_cache()
     if not ms then
         result = {}
     elseif not cs or ms["mtime"] > cs["mtime"] then
+        local cacheable = true
         local itr = fs.dir(metadir)
         local data = {}
         if itr then
@@ -287,10 +290,20 @@ local function get_installed_and_cache()
                                 broken = true,
                             }
                         end
+                        local time = nil
                         local metapkg = metapkgpre .. meta.name
                         local status = ipkg.status(metapkg)
                         if next(status) ~= nil then
-                            meta.time = tonumber(status[metapkg]["Installed-Time"])
+                            time = status[metapkg]["Installed-Time"]
+                        else
+                            local istat = fs.stat("/usr/lib/opkg/info/" .. metapkg .. ".list")
+                            if istat ~= nil then
+                                time = istat["mtime"]
+                            end
+                            cacheable = false
+                        end
+                        if time ~= nil then
+                            meta.time = tonumber(time)
                             data[#data+1] = meta
                         end
                     end
@@ -298,11 +311,13 @@ local function get_installed_and_cache()
             end
         end
         result = data
-        fs.mkdirr(cachedir)
-        local oflags = nixio.open_flags("rdwr", "creat")
-        local mfile, code, msg = nixio.open(cachefile, oflags)
-        mfile:writeall(jsonc.stringify(result))
-        mfile:close()
+        if cacheable then
+            fs.mkdirr(cachedir)
+            local oflags = nixio.open_flags("rdwr", "creat")
+            local mfile, code, msg = nixio.open(cachefile, oflags)
+            mfile:writeall(jsonc.stringify(result))
+            mfile:close()
+        end
     else
         result = jsonc.parse(fs.readfile(cachefile) or "")
     end
@@ -1022,6 +1037,15 @@ function toggle_arch()
     local uci  = require "luci.model.uci".cursor()
     local ignore = luci.http.formvalue("ignore")
     uci:set("istore", "istore", "ignore_arch", ignore == "true" and "1" or "0")
+    uci:commit("istore")
+    luci.http.prepare_content("application/json")
+    luci.http.write_json({code = 200, msg = "Success"})
+end
+
+function toggle_ipv4()
+    local uci  = require "luci.model.uci".cursor()
+    local ipv4 = luci.http.formvalue("ipv4")
+    uci:set("istore", "istore", "ipv4", ipv4 == "true" and "1" or "0")
     uci:commit("istore")
     luci.http.prepare_content("application/json")
     luci.http.write_json({code = 200, msg = "Success"})

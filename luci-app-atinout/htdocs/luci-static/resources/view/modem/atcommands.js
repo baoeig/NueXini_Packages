@@ -24,8 +24,8 @@ return view.extend({
 			var out = document.querySelector('.atcommand-output');
 			out.style.display = '';
 
-			res.stdout = res.stdout?.replace(/(?=\n)$|\s*|\s*$|\n\n+/gm, "") || '';
-			res.stderr = res.stderr?.replace(/(?=\n)$|\s*|\s*$|\n\n+/gm, "") || '';
+			res.stdout = res.stdout?.trim().replace(/\n\s*\n\s*\n+/g, '\n\n') || '';
+			res.stderr = res.stderr?.trim().replace(/\n\s*\n\s*\n+/g, '\n\n') || '';
 
 			dom.content(out, [ res.stdout || '', res.stderr || '' ]);
 
@@ -81,8 +81,12 @@ return view.extend({
 			if (devices) {
 				devices.forEach(function(device) {
 					var name = device.name;
-					if (name && (name.startsWith('ttyUSB') || name.startsWith('ttyACM'))) {
-						ports.push('/dev/' + name);
+					if (name) {
+						if (name.startsWith('ttyUSB') ||
+							name.startsWith('ttyACM') ||
+							/^wwan\d+at\d+/.test(name)) {
+							ports.push('/dev/' + name);
+						}
 					}
 				});
 			}
